@@ -1,44 +1,54 @@
 # python-donwload
 
-Tool Python modular untuk:
-- menganalisis halaman Websiteedukasi,
-- menemukan link download file,
-- mengunduh file otomatis,
-- dan menata hasil unduhan agar rapi.
+Tool Python untuk menganalisis halaman Websiteedukasi, menemukan link file, mengunduh arsip, lalu merapikan hasil menjadi struktur folder yang konsisten per kelas/semester.
 
-Proyek ini dibangun untuk workflow seperti `modul-ajar-kelas-3` (Ganjil, Genap, Deep Learning), termasuk handling link Google Drive yang butuh konfirmasi untuk file besar.
+Project ini fokus pada workflow modul ajar SD/MI (kelas 1-6) dengan tiga kategori utama:
+- `ganjil`
+- `genap`
+- `deep-learning`
 
-## Fitur Utama
+Termasuk handling khusus untuk:
+- link Google Drive dengan halaman konfirmasi,
+- deduplikasi arsip,
+- ekstraksi `.rar` dengan flatten output,
+- laporan ringkas (`INDEX.md`, `RINGKASAN_RAPI.md`, `summary.json`).
 
-- Analisis link bertahap dari halaman awal.
-- Deteksi 3 jenis link:
-  - halaman modul (`/modul-ajar-...`)
-  - halaman download (`/download/...`)
-  - file langsung (mis. Google Drive `export=download`)
-- Download file otomatis ke folder target.
-- Penamaan file otomatis dari:
-  - `Content-Disposition`
-  - query `id` (Google Drive)
-  - nama path URL
-- Support konfirmasi download Google Drive (halaman virus scan warning).
-- Arsitektur modular agar mudah dikembangkan.
-- Unit test untuk bagian ekstraksi dan downloader.
+## Fitur
 
-## Struktur Proyek
+- Crawl halaman modul dan turunan link internal.
+- Klasifikasi link menjadi:
+  - halaman modul,
+  - halaman download,
+  - direct file.
+- Download file dengan penamaan aman.
+- Handling Google Drive confirmation flow.
+- Batch download kelas (`download-classes`).
+- Rapikan hasil download ke struktur folder terstandar.
+- Deduplikasi arsip (`name-size` atau `sha1`).
+- Ekstraksi arsip dengan output flat (tanpa subfolder dalam).
+- Ringkasan hasil per kelas.
+
+## Struktur Project
 
 ```text
 python-donwload/
 ├── webdl/
-│   ├── __init__.py
-│   ├── cli.py          # CLI: analyze, download
-│   ├── crawler.py      # Crawl halaman dan kumpulkan link
-│   ├── downloader.py   # Download file + handling Google Drive
-│   ├── extractor.py    # Ekstraksi URL dari HTML
-│   └── models.py       # Dataclass model laporan
+│   ├── cli.py
+│   ├── crawler.py
+│   ├── downloader.py
+│   ├── extractor.py
+│   └── models.py
+├── scripts/
+│   ├── rapikan_hasil_kelas.py
+│   └── normalisasi_hasil_rapi.py
 ├── tests/
 │   ├── conftest.py
+│   ├── test_cli.py
 │   ├── test_downloader.py
 │   └── test_extractor.py
+├── changelog/
+├── analysis/
+├── downloads/
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
@@ -47,128 +57,216 @@ python-donwload/
 ## Requirement
 
 - Python `>=3.14`
-- `uv` (package/dependency runner)
+- `uv`
+- `unar` (untuk ekstraksi `.rar`)
 
-## Instalasi & Setup
+Cek `unar`:
 
-1. Sinkronkan environment:
+```bash
+unar -version
+```
+
+## Setup
 
 ```bash
 uv sync
 ```
 
-2. (Opsional) jika cache `uv` di home tidak bisa ditulis, gunakan cache lokal proyek:
+Jika cache default `uv` tidak writable:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv sync
 ```
 
-## Cara Pakai CLI
+## CLI Utama (`webdl.cli`)
 
-### 1) Analyze halaman
+### 1) Analyze
 
 ```bash
 uv run python -m webdl.cli analyze "https://www.websiteedukasi.com/modul-ajar-kelas-3.html" --max-pages 30 --output analysis-kelas3.json
 ```
 
-Penjelasan argumen:
-- `url`: URL awal yang mau dianalisis.
-- `--max-pages`: batas jumlah halaman yang discan.
-- `--output`: simpan laporan JSON.
+Output:
+- jumlah halaman discan,
+- jumlah halaman modul,
+- jumlah halaman download,
+- jumlah direct files,
+- daftar direct files.
 
-Output terminal contoh:
-- jumlah halaman yang discan
-- jumlah halaman modul
-- jumlah halaman download
-- jumlah direct file
-- daftar direct file
+Argumen:
+- `url`: URL awal.
+- `--max-pages`: batas jumlah halaman crawl.
+- `--output`: file JSON hasil analisis.
 
-### 2) Download file
+### 2) Download (single class URL)
 
 ```bash
 uv run python -m webdl.cli download "https://www.websiteedukasi.com/modul-ajar-kelas-3.html" --max-pages 30 --out downloads
 ```
 
-Penjelasan argumen:
+Argumen:
 - `url`: URL awal.
-- `--max-pages`: batas scan.
-- `--limit`: batasi hanya N file pertama (opsional).
-- `--out`: folder output file download.
+- `--max-pages`: batas crawl.
+- `--limit`: batasi N file pertama.
+- `--out`: folder output.
 
-Contoh batasi 3 file pertama:
+### 3) Download Kelas Sekaligus
 
 ```bash
-uv run python -m webdl.cli download "https://www.websiteedukasi.com/modul-ajar-kelas-3.html" --max-pages 30 --limit 3 --out downloads
+uv run python -m webdl.cli download-classes --classes "1-6" --max-pages 30 --out downloads
 ```
 
-## Workflow Rekomendasi (Kasus Nyata Kelas 3)
+Contoh exclude kelas tertentu:
 
-Untuk hasil rapi per kategori:
+```bash
+uv run python -m webdl.cli download-classes --classes "1-6" --exclude "3" --max-pages 30 --out downloads
+```
 
-- `ganjil/<mapel>/arsip`
-- `ganjil/<mapel>/extract`
-- `genap/<mapel>/arsip`
-- `genap/<mapel>/extract`
-- `deep-learning/<mapel>/arsip`
-- `deep-learning/<mapel>/extract`
+Argumen:
+- `--classes`: range/list kelas. Contoh `1-6` atau `1,2,4,5,6`.
+- `--exclude`: kelas yang dikecualikan.
+- `--max-pages`: batas crawl per kelas.
+- `--limit`: batas file per kelas.
+- `--out`: root output download.
 
-Flow praktis:
-1. Analyze per halaman mapel.
-2. Ambil halaman `/download/...` utama.
-3. Ambil direct file dari halaman download.
-4. Download ke folder `arsip`.
-5. Extract ke folder `extract`.
-6. Flatten isi `extract` (opsional) agar tanpa subfolder bertingkat.
+## Script Rapikan Hasil Download
 
-## Arsitektur Modul
+### A) `scripts/rapikan_hasil_kelas.py`
 
-### `webdl/extractor.py`
-Tanggung jawab:
-- Parse HTML untuk atribut `href`, `src`, `action`.
-- Normalisasi URL relatif ke absolut.
-- Klasifikasi link menjadi:
-  - `modul_pages`
-  - `download_pages`
-  - `direct_files`
+Fungsi:
+- memindahkan arsip dari `downloads/kelas-X` ke struktur rapi,
+- optional ekstraksi langsung,
+- membuat `INDEX.md`, `RINGKASAN_RAPI.md`, `summary.json`.
 
-Aturan direct file utama:
-- extension file (`.pdf`, `.docx`, `.rar`, dll)
-- Google Drive dengan query `export=download`
+Dukungan alias penting:
+- kategori `genjil` otomatis dipetakan ke `ganjil`,
+- subject `pai-bp` otomatis dipetakan ke `pai`,
+- `--kelas 4` otomatis jadi folder `kelas-4`.
 
-### `webdl/crawler.py`
-Tanggung jawab:
-- Crawl bertahap dari URL awal.
-- Prioritaskan halaman download.
-- Batasi scope domain dan halaman agar efisien.
-- Keluarkan `AnalysisReport`.
+Contoh (move only):
 
-### `webdl/downloader.py`
-Tanggung jawab:
-- Download file streaming (chunked write).
-- Tentukan nama file aman.
-- Handle kasus Google Drive warning page:
-  - deteksi form konfirmasi
-  - kirim request lanjutan otomatis
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/rapikan_hasil_kelas.py \
+  --source downloads/kelas-4 \
+  --target-root /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2 \
+  --kelas 4 \
+  --move-only
+```
 
-### `webdl/cli.py`
-Tanggung jawab:
-- Entry point command line (`analyze`, `download`).
-- Menjembatani workflow analyzer + downloader.
+Contoh (move + extract):
 
-### `webdl/models.py`
-Berisi dataclass:
-- `ExtractedLinks`
-- `AnalysisReport`
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/rapikan_hasil_kelas.py \
+  --source downloads/kelas-4 \
+  --target-root /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2 \
+  --kelas kelas-4 \
+  --timeout 120
+```
+
+Argumen utama:
+- `--source`: sumber folder kelas.
+- `--target-root`: root hasil rapi.
+- `--kelas`: nama/nomor kelas.
+- `--move-only`: skip ekstraksi.
+- `--timeout`: timeout ekstraksi per arsip.
+- `--include-root`: ikut proses `.rar` di root source.
+- `--quiet`: matikan progress log.
+
+### B) `scripts/normalisasi_hasil_rapi.py`
+
+Fungsi:
+- normalisasi ulang struktur `kelas-X` yang sudah ada,
+- deduplikasi arsip,
+- klasifikasi ulang kategori/mapel,
+- ekstraksi ulang (atau move only),
+- simpan backup lama ke `kelas-X_before_dedup`.
+
+Contoh:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/normalisasi_hasil_rapi.py \
+  --kelas-dir /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2/kelas-4 \
+  --dedupe-mode name-size
+```
+
+Mode dedup:
+- `name-size` (cepat, default)
+- `sha1` (lebih ketat, lebih lambat)
+
+Contoh move only:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/normalisasi_hasil_rapi.py \
+  --kelas-dir /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2/kelas-4 \
+  --dedupe-mode sha1 \
+  --move-only
+```
+
+## Struktur Output Rapi
+
+Target struktur per kelas:
+
+```text
+hasil_rapi_v2/
+└── kelas-6/
+    ├── ganjil/
+    │   └── <subject>/
+    │       ├── arsip/
+    │       └── extract/
+    ├── genap/
+    │   └── <subject>/
+    │       ├── arsip/
+    │       └── extract/
+    └── deep-learning/
+        └── <subject>/
+            ├── arsip/
+            └── extract/
+```
+
+Output laporan per kelas:
+- `INDEX.md`: ringkasan jumlah arsip/extract per mapel.
+- `RINGKASAN_RAPI.md`: ringkasan total proses.
+- `summary.json`: detail item + status extract + error.
+
+## Workflow End-to-End (Rekomendasi)
+
+1. Download dari URL kelas:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python -m webdl.cli download \
+  "https://www.websiteedukasi.com/modul-ajar-kelas-6.html" \
+  --max-pages 30 \
+  --out downloads
+```
+
+2. Rapikan ke struktur target (move only):
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/rapikan_hasil_kelas.py \
+  --source downloads/kelas-6 \
+  --target-root /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2 \
+  --kelas 6 \
+  --move-only
+```
+
+3. Normalisasi + dedup + extract:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/normalisasi_hasil_rapi.py \
+  --kelas-dir /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2/kelas-6 \
+  --dedupe-mode name-size
+```
+
+4. Verifikasi hasil:
+
+```bash
+find /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2/kelas-6 -maxdepth 2 -type d | sort
+sed -n '1,200p' /home/hades/2026-ramadhan/python-donwload/hasil_rapi_v2/kelas-6/INDEX.md
+```
 
 ## Testing
 
 Jalankan semua test:
-
-```bash
-uv run pytest -q
-```
-
-Jika ada masalah cache `uv`:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run pytest -q
@@ -176,62 +274,54 @@ UV_CACHE_DIR=.uv-cache uv run pytest -q
 
 ## Troubleshooting
 
-### 1) `uv` gagal akses cache home
-Error contoh: permission denied di `~/.cache/uv`
+### 1) `uv` cache permission error
 
-Solusi:
+Gunakan prefix ini di semua command:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run <command>
+UV_CACHE_DIR=.uv-cache
 ```
 
-### 2) File Google Drive terdownload jadi HTML, bukan arsip
-Biasanya terjadi karena halaman konfirmasi “Download anyway”.
+### 2) Extract `.rar` gagal
 
-Status saat ini:
-- Downloader sudah include logic konfirmasi Google Drive.
-- Jika masih terjadi, cek apakah link berubah format atau butuh cookie tambahan.
-
-### 3) Extract `.rar` gagal
 Kemungkinan:
-- extractor tidak support varian RAR tertentu,
-- arsip korup/tidak lengkap,
-- nama/path dalam arsip aneh.
+- arsip source corrupt/partial,
+- timeout ekstraksi,
+- format arsip bermasalah.
 
-Solusi:
-- coba tool extractor lain (`unar`, `7z`, `unrar`) sesuai environment,
-- validasi isi arsip dengan listing dulu,
-- cek ukuran file unduhan sesuai ekspektasi.
+Langkah:
+- cek detail error di `summary.json`,
+- naikkan `--timeout`,
+- coba `--move-only` dulu untuk memisahkan masalah download vs ekstraksi.
 
-## Catatan Etika & Legal
+### 3) Kategori tidak sesuai (`genap` masuk `ganjil`)
+
+Jalankan normalisasi ulang:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/normalisasi_hasil_rapi.py --kelas-dir <path-kelas>
+```
+
+Script normalisasi memakai sinyal nama file (mis. `Modul Ajar 2`, `Semester 2`) untuk recovery klasifikasi.
+
+## Changelog Policy
+
+Repo ini memakai workflow changelog aktif.
+
+Setiap perubahan yang berdampak (fitur/behavior/CLI/script) wajib:
+- update file di `changelog/`,
+- menjelaskan: apa berubah, kenapa, dampak, verifikasi,
+- sinkronkan docs terkait.
+
+Referensi:
+- `AGENTS.md`
+- `skill/SKILL.md`
+- `changelog/README.md`
+- `changelog/_template.md`
+
+## Catatan Legal
 
 Gunakan tool ini secara bertanggung jawab:
-- patuhi Terms of Service website sumber,
-- hormati hak cipta dan lisensi dokumen,
-- jangan gunakan untuk scraping berlebihan yang merugikan layanan.
-
-## Roadmap Pengembangan (Opsional)
-
-- Tambah mode output CSV/Excel.
-- Tambah retry + backoff lebih granular.
-- Tambah checksum verification.
-- Tambah parallel download terkontrol.
-- Tambah command khusus `organize` untuk auto rapikan extract.
-
-## Ringkas Command
-
-```bash
-# setup
-uv sync
-
-# analyze
-uv run python -m webdl.cli analyze "https://www.websiteedukasi.com/modul-ajar-kelas-3.html" --max-pages 30 --output analysis-kelas3.json
-
-# download
-uv run python -m webdl.cli download "https://www.websiteedukasi.com/modul-ajar-kelas-3.html" --max-pages 30 --out downloads
-
-# test
-uv run pytest -q
-```
-
-Jika environment membatasi cache `uv`, prepend semua command dengan `UV_CACHE_DIR=.uv-cache`.
+- patuhi terms situs sumber,
+- hormati hak cipta/lisensi dokumen,
+- hindari crawling berlebihan yang membebani layanan.
